@@ -25,9 +25,11 @@ void wc(FILE *ofile, FILE *infile, char *inname) {
     newlines = words = bytes = 0;
     isWord = 0;
 
-    while(c = fgetc(infile) != EOF) {
+    while((c = (char)fgetc(infile)) != EOF) {
 	 bytes++;
-	 fputc(c, stdout);
+	 printf("%d\n", c);
+	 putchar(c);
+	 //fputc(stdout, c);
          if(c == '\r' || c == '\n') {	
 	     newlines++;
 	     isWord = 0;  	
