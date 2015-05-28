@@ -1,0 +1,73 @@
+
+* What is the value of infile ?  (hint:  print infile)
+      print infile
+	$1 = (FILE *) 0x602010
+
+* What is the object referenced by infile?  (hint:  *infile)
+	print *infile
+
+What is the value of ofile ?  How is it diffrent from that of infile ?  Why?
+
+(gdb) print ofile
+$2 = (FILE *) 0x7ffff7dd6800 <_IO_2_1_stdout_>
+
+Why??
+
+
+What is the address of the function wc ?
+
+	(gdb) p wc
+	$3 = {void (FILE *, FILE *, char *)} 0x400726 <wc>
+
+	(gdb) p main
+	$4 = {int (int, char **)} 0x400870 <main>
+
+Try info stack .  Explain what you see.
+
+(gdb) info stack
+#0  wc (ofile=0x7ffff7dd6800 <_IO_2_1_stdout_>, infile=0x602010, 
+    inname=0x7fffffffe2eb "input") at wc.c:23
+#1  0x00000000004008f6 in main (argc=2, argv=0x7fffffffdfc8) at wc.c:63
+
+Try info frame .  Explain what you see.
+
+(gdb) info frame
+Stack level 0, frame at 0x7fffffffdec0:
+ rip = 0x40077a in wc (wc.c:23); saved rip = 0x4008f6
+ called by frame at 0x7fffffffdef0
+ source language c.
+ Arglist at 0x7fffffffdeb0, args: ofile=0x7ffff7dd6800 <_IO_2_1_stdout_>, 
+    infile=0x602010, inname=0x7fffffffe2eb "input"
+ Locals at 0x7fffffffdeb0, Previous frame's sp is 0x7fffffffdec0
+ Saved registers:
+  rbp at 0x7fffffffdeb0, rip at 0x7fffffffdeb8
+
+Try info registers .  Which registers are holding aspects of the program that you recognize?
+
+(gdb) info registers
+rax            0x7ffff7dd6800	140737351870464
+rbx            0x0	0
+rcx            0x602010	6299664
+rdx            0x7fffffffe2eb	140737488347883
+rsi            0x602010	6299664
+rdi            0x7ffff7dd6800	140737351870464
+rbp            0x7fffffffdeb0	0x7fffffffdeb0
+rsp            0x7fffffffde70	0x7fffffffde70
+r8             0x0	0
+r9             0x1	1
+r10            0x241	577
+r11            0x246	582
+r12            0x400630	4195888 (starting position)
+r13            0x7fffffffdfc0	140737488347072
+r14            0x0	0
+r15            0x0	0
+rip            0x40077a	0x40077a <wc+84>
+eflags         0x202	[ IF ]
+cs             0x33	51
+ss             0x2b	43
+ds             0x0	0
+es             0x0	0
+fs             0x0	0
+gs             0x0	0
+
+

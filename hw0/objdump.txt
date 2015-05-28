@@ -1,0 +1,22 @@
+
+
+   * What file format is used for this binary?  And what architecture is it compiled for?
+	elf64-x86-64		
+
+   * What are the names of segments you ?
+        .text .rodata .init .dynsym .data .bss .comment
+
+   * What segment contains wc (the function) and what is it's address?  (hint:  objdump -w wc | grep wc)
+	The correct way is to issue "objdump -x wc|grep wc"		
+	0000000000400726 g     F .text  000000000000014a              wc
+
+   * What about main?
+	.text  400726
+	starting position is 400630
+
+   * How  do  these  correspond  to  what  you  observed  in  gdb  when  you  were  looking  at  the  loaded, executing program?
+	??
+
+   * Do you see the stack segment anywhere?  What about the heap?  Explain
+	??
+	

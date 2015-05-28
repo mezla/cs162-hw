@@ -1,0 +1,4 @@
+tack size: 8388608
+process limit: 4096
+max file descriptors: 1024
+

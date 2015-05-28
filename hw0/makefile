@@ -1,3 +1,4 @@
+# CS162 HW0
 SRCS=wc.c map.c main.c 
 
 CC=gcc

@@ -1,0 +1,47 @@
+
+[thinkhy@localhost hw0]$ ./map
+_main  @ 4005ce
+recur @ 400586
+_main stack: 7ffd2cf5900c
+static data: 60103c
+Heap: malloc 1: edf010
+Heap: malloc 2: edf080
+recur call 754290636: stack@ 7ffd2cf58fdc
+recur call 754290588: stack@ 7ffd2cf58fac
+recur call 754290540: stack@ 7ffd2cf58f7c
+recur call 754290492: stack@ 7ffd2cf58f4c
+
+
+Now think about the following questions and put the answers in
+
+Using  objdump  on  the  map  executable.   Which  of  the  addresses  from  the  previous  section  are defined in the executable, and which segment is each dened in?
+
+00000000004005ce g     F .text	00000000000000ba              main
+0000000000400586 g     F .text	0000000000000048              recur
+000000000060103c g     O .data	0000000000000004              stuff
+
+
+Make a list of the important segments, and what they are used for.
+.text .bss .data .heap .stack .arg
+
+What direction is the stack growing in?
+from top to bottom
+
+How large is the stack frame for each recursive call?
+48 bytes
+
+
+Where is the heap?  What direction is it growing in?
+from bottom to top
+
+Are the two malloc()ed memory areas contiguous?
+NO
+
+Make  a  high  level  map  of  the  address  space  for  the  program  containing  each  of  the  important segments, where they start and end, where the holes are, and what direction things grow in.  
+
+.stack  7ffd2cf5900c
+.heap   edf010
+.data   6013C
+.bss
+.text   4005ce
+
