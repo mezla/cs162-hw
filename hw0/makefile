@@ -1,19 +1,21 @@
-SRCS=main.c shell.c process.c io.c parse.c 
-EXECUTABLES=shell 
+SRCS=wc.c map.c main.c 
 
 CC=gcc
 CFLAGS=-g -Wall 
 LDFLAGS=
 
 OBJS=$(SRCS:.c=.o)
+EXECUTABLES=$(basename $(SRCS))
 
 all: $(EXECUTABLES)
 
-$(EXECUTABLES): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@  
+%: %.o
+	$(CC) $(CFLAGS) $<  $(LDFLAGS) -o $@  
 
-.c.o:
+%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+check:
+	verify.sh # TODO
 clean:
 	rm -rf $(EXECUTABLES) $(OBJS)
