@@ -1,3 +1,12 @@
+/**********************************************************************************
+*
+*  Change List:
+*     1. HW1 - task2 - include the current working directory in the prompt
+*     2. HW1 - task2 - add cd command
+*     3. HW1 - task3 - exec external program
+*  
+***********************************************************************************/
+
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -10,7 +19,8 @@
 
 #define FALSE 0
 #define TRUE 1
-#define INPUT_STRING_SIZE 80
+#define INPUT_STRING_SIZE  80
+#define MAX_DIRECTORY_SIZE 1024
 
 #include "io.h"
 #include "parse.h"
@@ -21,6 +31,32 @@ int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
   exit(0);
   return 1;
+}
+
+int cmd_cd(tok_t arg[]) {
+  if(chdir(arg[0]) == -1) {
+	fprintf(stdout, "Can not access directory %s\n", arg[0]);
+	return -1;		
+  }
+
+  return 1;
+}
+
+int cmd_exec(tok_t arg[]) {
+   int exit;
+   int pid;
+   pid = fork();
+   if(pid == 0)
+	execv(arg[0], arg); 
+   else if(pid < 0) {
+	fprintf(stderr, "Failed to exec: %s\n", arg[0]);
+  	return -1;
+   }
+   else {
+	waitpid(pid, &exit, 0);	
+   }
+
+   return 1;		
 }
 
 int cmd_help(tok_t arg[]);
@@ -37,6 +73,7 @@ typedef struct fun_desc {
 fun_desc_t cmd_table[] = {
   {cmd_help, "?", "show this help menu"},
   {cmd_quit, "quit", "quit the command shell"},
+  {cmd_cd,   "cd",   "change current working directory"},
 };
 
 int cmd_help(tok_t arg[]) {
@@ -105,6 +142,7 @@ process* create_process(char* inputString)
 
 int shell (int argc, char *argv[]) {
   char *s = malloc(INPUT_STRING_SIZE+1);			/* user input string */
+  char cwd[MAX_DIRECTORY_SIZE+1];
   tok_t *t;			/* tokens parsed from input */
   int lineNum = 0;
   int fundex = -1;
@@ -116,16 +154,21 @@ int shell (int argc, char *argv[]) {
 
   printf("%s running as PID %d under %d\n",argv[0],pid,ppid);
 
+  getcwd(cwd, MAX_DIRECTORY_SIZE);
   lineNum=0;
-  fprintf(stdout, "%d: ", lineNum);
+  fprintf(stdout, "%s - %d: ", cwd, lineNum);
   while ((s = freadln(stdin))){
     t = getToks(s); /* break the line into tokens */
     fundex = lookup(t[0]); /* Is first token a shell literal */
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
     else {
-      fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n");
+       cmd_exec(&t[0]);
+      /* fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n"); */
+	
     }
-    fprintf(stdout, "%d: ", lineNum);
+
+    getcwd(cwd, MAX_DIRECTORY_SIZE);
+    fprintf(stdout, "%s - %d: ", cwd, lineNum);
   }
   return 0;
 }
