@@ -4,6 +4,7 @@
 *     1. HW1 - task2 - include the current working directory in the prompt
 *     2. HW1 - task2 - add cd command
 *     3. HW1 - task3 - exec external program
+*     4. HW1 - task4 - Path resolution
 *  
 ***********************************************************************************/
 
@@ -20,7 +21,7 @@
 #define FALSE 0
 #define TRUE 1
 #define INPUT_STRING_SIZE  80
-#define MAX_DIRECTORY_SIZE 1024
+#define MAX_FILE_SIZE 1024
 
 #include "io.h"
 #include "parse.h"
@@ -43,23 +44,69 @@ int cmd_cd(tok_t arg[]) {
 }
 
 int cmd_exec(tok_t arg[]) {
-   int exit;
+   int wexit;
    int pid;
+   char filename[MAX_FILE_SIZE+1];
    pid = fork();
-   if(pid == 0)
-	execv(arg[0], arg); 
+   if(pid == 0) {
+	if(path_resolution(arg[0], filename) != 0)
+	     strncpy(filename, arg[0], MAX_FILE_SIZE); 
+	// printf("exec file: %s\n", filename);
+	if(execv(filename, arg) == -1) { 
+		fprintf(stderr, "Failed to exec: %s\n", arg[0]);
+                exit(-1);
+	}
+   }
    else if(pid < 0) {
 	fprintf(stderr, "Failed to exec: %s\n", arg[0]);
   	return -1;
    }
    else {
-	waitpid(pid, &exit, 0);	
+	waitpid(pid, &wexit, 0);	
    }
 
    return 1;		
 }
 
 int cmd_help(tok_t arg[]);
+
+
+// 06/15/2015 added by thinkhy
+// first  arg[IN]:  executable file
+// second arg[OUT]: valid path
+int path_resolution(const char* filename, 
+	            char pathname[], 
+		    int size) {
+    
+   int i;
+   char * cur_path; 
+   
+   if(filename[0] == '/' 
+	|| filename[0] == '.') {
+	return 1;	
+   }
+
+   // get PATH env var
+   char * path_env = getenv("PATH");
+   for(cur_path = strtok(path_env, ":"); 
+		cur_path != NULL; cur_path = strtok(NULL, ":")) {
+        // strip ending slash
+        for(i = 0; cur_path[i];i++);
+	for(--i; i >= 0&&cur_path[i] == '/'; i--);
+	cur_path[++i] = '\0';
+	
+	// concatenate string
+	snprintf(pathname, size, "%s/%s", cur_path, filename);
+	// printf("test: %s\n", pathname); 	
+
+	// if file is exectualbe, return OK
+	if(access(pathname, X_OK) == 0) {
+		return 0;
+        }
+   }
+
+   return 1; 
+}
 
 
 /* Command Lookup table */
@@ -142,7 +189,7 @@ process* create_process(char* inputString)
 
 int shell (int argc, char *argv[]) {
   char *s = malloc(INPUT_STRING_SIZE+1);			/* user input string */
-  char cwd[MAX_DIRECTORY_SIZE+1];
+  char cwd[MAX_FILE_SIZE+1];
   tok_t *t;			/* tokens parsed from input */
   int lineNum = 0;
   int fundex = -1;
@@ -154,7 +201,7 @@ int shell (int argc, char *argv[]) {
 
   printf("%s running as PID %d under %d\n",argv[0],pid,ppid);
 
-  getcwd(cwd, MAX_DIRECTORY_SIZE);
+  getcwd(cwd, MAX_FILE_SIZE);
   lineNum=0;
   fprintf(stdout, "%s - %d: ", cwd, lineNum);
   while ((s = freadln(stdin))){
@@ -167,8 +214,11 @@ int shell (int argc, char *argv[]) {
 	
     }
 
-    getcwd(cwd, MAX_DIRECTORY_SIZE);
+    getcwd(cwd, MAX_FILE_SIZE);
     fprintf(stdout, "%s - %d: ", cwd, lineNum);
   }
+
   return 0;
 }
+
+
