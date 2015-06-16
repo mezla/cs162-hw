@@ -15,7 +15,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <termios.h>
+#include <fcntl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #define FALSE 0
@@ -51,10 +53,16 @@ int cmd_exec(tok_t arg[]) {
    if(pid == 0) {
 	if(path_resolution(arg[0], filename) != 0)
 	     strncpy(filename, arg[0], MAX_FILE_SIZE); 
+
 	// printf("exec file: %s\n", filename);
+	if(process_redirection(arg) != 0) {
+		fprintf(stderr, "Failed to process input/output redirection\n");
+                exit(-1);
+	}
+
 	if(execv(filename, arg) == -1) { 
 		fprintf(stderr, "Failed to exec: %s\n", arg[0]);
-                exit(-1);
+                exit(-2);
 	}
    }
    else if(pid < 0) {
@@ -70,6 +78,53 @@ int cmd_exec(tok_t arg[]) {
 
 int cmd_help(tok_t arg[]);
 
+
+// 06/16/2015 added by thinkhy
+// first  arg[IN]:  arguments
+// function: parse input/output redirection syntax 
+// and replace stdin or stdout with specific file descriptor
+// Note: FDs will not be closed on failures, because 
+// we are in a child process, when this function fails, the child process
+// would be terminated with all the IO resources released.
+int process_redirection(tok_t arg[]) {
+     int index = 1; // first argument is the program itself
+     int outfd, infd;
+     int ret;
+     while(index < MAXTOKS && arg[index]) {
+	switch(arg[index][0]) {
+	    case '>':
+		outfd = open(arg[++index], O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG|S_IROTH);
+		if(outfd == -1) {
+		    fprintf(stderr, "Failed to open %s\n",arg[index]);
+		    return -1;
+		}
+		close(1);
+		ret = dup2(outfd, 1);
+                if(ret < 0) {
+		    fprintf(stderr, "Failed to invoke dup2 for stdout, return code is %d\n", ret);
+		    return -1;
+	        }
+		arg[index-1] = arg[index] = NULL;
+                break;
+	    case '<':
+		infd = open(arg[++index], O_RDONLY);
+		if(infd == -1) {
+		    fprintf(stderr, "Failed to open %s\n",arg[index]);
+		    return -1;
+		}
+		close(0);
+		ret = dup2(infd, 0);
+                if(ret < 0) {
+		    fprintf(stderr, "Failed to invoke dup2 for stdin, return code is %d\n", ret);
+		    return -1;
+	        }
+		arg[index-1] = arg[index] = NULL;
+                break;
+        }
+	index++;
+     }
+     return 0;
+}
 
 // 06/15/2015 added by thinkhy
 // first  arg[IN]:  executable file
