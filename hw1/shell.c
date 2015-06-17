@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -59,22 +60,11 @@ int cmd_exec(tok_t arg[]) {
 	     strncpy(filename, arg[0], MAX_FILE_SIZE); 
 
 	// printf("exec file: %s\n", filename);
-	if(process_redirection(arg) != 0) {
+	if(io_redirection(arg) != 0) {
 		fprintf(stderr, "Failed to process input/output redirection\n");
                 exit(-1);
 	}
 
-	// create a process bookkeeping
-	process* cur_process = (process*)malloc(sizeof(process));
-	cur_process->pid = getpid();
-	cur_process->status = RUNNING;
-	// cur_process->argc = argc;
-	cur_process->argv = arg;
-	cur_process->stdin = stdin;
-	cur_process->stdout = stdout;
-	cur_process->stderr = stderr;
-        add_process(cur_process);
-	printf("process created %d\n", first_process->next->pid);
 	
 
 	if(execv(filename, arg) == -1) { 
@@ -87,6 +77,15 @@ int cmd_exec(tok_t arg[]) {
   	return -1;
    }
    else {
+	// create a process bookkeeping
+	process* cur_process = (process*)malloc(sizeof(process));
+	cur_process->pid = pid;
+	cur_process->status = RUNNING;
+	// cur_process->argc = argc;
+	cur_process->argv = arg;
+        add_process(cur_process);
+
+	// wait until child process terminated
 	waitpid(pid, &wexit, 0);	
 	process* p = find_process_by_pid(pid);
 	if(p != NULL)
@@ -108,7 +107,7 @@ int cmd_help(tok_t arg[]);
 // Note: FDs will not be closed on failures, because 
 // we are in a child process, when this function fails, the child process
 // would be terminated with all the IO resources released.
-int process_redirection(tok_t arg[]) {
+int io_redirection(tok_t arg[]) {
      int index = 1; // first argument is the program itself
      int outfd, infd;
      int ret;
@@ -249,7 +248,9 @@ void init_shell()
  * Add a process to our process list
  */
 void add_process(process* p)
-{
+{   
+    assert(first_process != NULL);
+
     if(p == NULL)
 	return;
     // 150617 added by thinkhy 
@@ -281,10 +282,9 @@ process* find_process_by_pid(pid_t pid) {
 	printf("process find %d\n", p->pid);
 	p = p->next;
   }
-  printf("process find %d\n",  p->pid);
   printf("process find %d\n", p == NULL? 0 : p->pid);
 
-  return p == NULL ? 0 : p->pid;
+  return p;
 }
 
 
@@ -301,7 +301,7 @@ int shell (int argc, char *argv[]) {
 
   init_shell();
 
-  // create the head node for process list
+  // create the head node and initialize it
   first_process = (process*)malloc(sizeof(process));
   first_process->pid = pid;
   first_process->status = RUNNING;
@@ -324,7 +324,6 @@ int shell (int argc, char *argv[]) {
     else {
        cmd_exec(&t[0]);
       /* fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n"); */
-	
     }
 
     getcwd(cwd, MAX_FILE_SIZE);
