@@ -6,6 +6,10 @@
 #include <termios.h>
 #include <unistd.h>
 
+#define  RUNNING     0
+#define  STOPPED     1
+#define  TERMINATED  2
+
 typedef struct process
 {
   char** argv;

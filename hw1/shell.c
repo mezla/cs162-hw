@@ -2,9 +2,10 @@
 *
 *  Change List:
 *     1. HW1 - task2 - include the current working directory in the prompt
-*     2. HW1 - task2 - add cd command
-*     3. HW1 - task3 - exec external program
-*     4. HW1 - task4 - Path resolution
+*     2. HW1 - task3 - add cd command
+*     3. HW1 - task4 - exec external program
+*     4. HW1 - task5 - Path resolution
+*     5. HW1 - task6 - Process Bookkeeping
 *  
 ***********************************************************************************/
 
@@ -29,6 +30,9 @@
 #include "parse.h"
 #include "process.h"
 #include "shell.h"
+
+process* find_process_by_pid(pid_t pid);
+void add_process(process* p);
 
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
@@ -60,6 +64,19 @@ int cmd_exec(tok_t arg[]) {
                 exit(-1);
 	}
 
+	// create a process bookkeeping
+	process* cur_process = (process*)malloc(sizeof(process));
+	cur_process->pid = getpid();
+	cur_process->status = RUNNING;
+	// cur_process->argc = argc;
+	cur_process->argv = arg;
+	cur_process->stdin = stdin;
+	cur_process->stdout = stdout;
+	cur_process->stderr = stderr;
+        add_process(cur_process);
+	printf("process created %d\n", first_process->next->pid);
+	
+
 	if(execv(filename, arg) == -1) { 
 		fprintf(stderr, "Failed to exec: %s\n", arg[0]);
                 exit(-2);
@@ -71,6 +88,11 @@ int cmd_exec(tok_t arg[]) {
    }
    else {
 	waitpid(pid, &wexit, 0);	
+	process* p = find_process_by_pid(pid);
+	if(p != NULL)
+	    p->status = TERMINATED;
+	else
+	    fprintf(stderr, "wait for invalid process %d\n", pid);
    }
 
    return 1;		
@@ -228,11 +250,18 @@ void init_shell()
  */
 void add_process(process* p)
 {
-  /** YOUR CODE HERE */
+    if(p == NULL)
+	return;
+    // 150617 added by thinkhy 
+    p->next = first_process->next;
+    if(first_process->next != NULL)
+	    first_process->next->prev = p;
+    p->prev = first_process;
+    first_process->next = p;
 }
 
 /**
- * Creates a process given the inputString from stdin
+ * creates a process given the inputstring from stdin
  */
 process* create_process(char* inputString)
 {
@@ -240,6 +269,23 @@ process* create_process(char* inputString)
   return NULL;
 }
 
+
+/**
+ * find a process by process ID
+ * 150617 added by thinkhy
+ */
+process* find_process_by_pid(pid_t pid) {
+  process *p = first_process;
+  printf("process find %d\n", p->pid);
+  while(p && p->pid != pid) {
+	printf("process find %d\n", p->pid);
+	p = p->next;
+  }
+  printf("process find %d\n",  p->pid);
+  printf("process find %d\n", p == NULL? 0 : p->pid);
+
+  return p == NULL ? 0 : p->pid;
+}
 
 
 int shell (int argc, char *argv[]) {
@@ -252,7 +298,19 @@ int shell (int argc, char *argv[]) {
   pid_t ppid = getppid();	/* get parents PID */
   pid_t cpid, tcpid, cpgid;
 
+
   init_shell();
+
+  // create the head node for process list
+  first_process = (process*)malloc(sizeof(process));
+  first_process->pid = pid;
+  first_process->status = RUNNING;
+  first_process->argc = argc;
+  first_process->argv = argv;
+  first_process->stdin = stdin;
+  first_process->stdout = stdout;
+  first_process->stderr = stderr;
+  first_process->next = first_process->prev = NULL;
 
   printf("%s running as PID %d under %d\n",argv[0],pid,ppid);
 
