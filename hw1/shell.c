@@ -4,8 +4,9 @@
 *     1. HW1 - task2 - include the current working directory in the prompt
 *     2. HW1 - task3 - add cd command
 *     3. HW1 - task4 - exec external program
-*     4. HW1 - task5 - Path resolution
-*     5. HW1 - task6 - Process Bookkeeping
+*     4. HW1 - task5 - path resolution
+*     5. HW1 - task6 - process bookkeeping
+*     6. HW1 - task7 - signal handling
 *  
 ***********************************************************************************/
 
@@ -18,7 +19,7 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <assert.h>
-#include <sys/types.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
@@ -35,6 +36,7 @@
 process* find_process_by_pid(pid_t pid);
 void add_process(process* p);
 
+
 int cmd_quit(tok_t arg[]) {
   printf("Bye\n");
   exit(0);
@@ -50,24 +52,46 @@ int cmd_cd(tok_t arg[]) {
   return 1;
 }
 
+
 int cmd_exec(tok_t arg[]) {
-   int wexit;
+   int wstatus;
    int pid;
-   char filename[MAX_FILE_SIZE+1];
+   char pathname[MAX_FILE_SIZE+1];
+
+   if(arg == NULL || arg[0] == NULL) {
+	perror("cmd_exec: invalide argument\n");
+	return -1;
+   }
+
+   // create a process bookkeeping
+   process* cur_process = (process*)malloc(sizeof(process));
+   // cur_process->argc = argc;
+   cur_process->argv = arg;
+   cur_process->stdin = cur_process->stdout = -1;
+   cur_process->tmodes = shell_tmodes;
+   (cur_process->tmodes).c_lflag |= (IEXTEN | ISIG | ICANON ); 
+   cur_process->background = 1; // foreground process by default
+
+   if(path_resolution(arg[0], pathname, MAX_FILE_SIZE) != 0) 
+      strncpy(pathname, arg[0], MAX_FILE_SIZE); 
+
+   // printf("exec file: %s\n", filename);
+   if(io_redirection(cur_process, arg) != 0) {
+      fprintf(stderr, "Failed to process input/output redirection\n");
+      exit(-1);
+   }
+
+
+   add_process(cur_process);
+
    pid = fork();
+
+   // child process
    if(pid == 0) {
-	if(path_resolution(arg[0], filename) != 0)
-	     strncpy(filename, arg[0], MAX_FILE_SIZE); 
+   	cur_process->pid = getpid();
 
-	// printf("exec file: %s\n", filename);
-	if(io_redirection(arg) != 0) {
-		fprintf(stderr, "Failed to process input/output redirection\n");
-                exit(-1);
-	}
-
-	
-
-	if(execv(filename, arg) == -1) { 
+        launch_process(cur_process);
+	if(execv(pathname, arg) == -1) { 
 		fprintf(stderr, "Failed to exec: %s\n", arg[0]);
                 exit(-2);
 	}
@@ -76,22 +100,18 @@ int cmd_exec(tok_t arg[]) {
 	fprintf(stderr, "Failed to exec: %s\n", arg[0]);
   	return -1;
    }
+   // parent process
    else {
-	// create a process bookkeeping
-	process* cur_process = (process*)malloc(sizeof(process));
+	// sync pgid info in parent child
 	cur_process->pid = pid;
-	cur_process->status = RUNNING;
-	// cur_process->argc = argc;
-	cur_process->argv = arg;
-        add_process(cur_process);
+	setpgid(pid, pid);
 
-	// wait until child process terminated
-	waitpid(pid, &wexit, 0);	
-	process* p = find_process_by_pid(pid);
-	if(p != NULL)
-	    p->status = TERMINATED;
-	else
-	    fprintf(stderr, "wait for invalid process %d\n", pid);
+	if(!cur_process->background) {
+		put_process_in_foreground(cur_process, 0);
+	}
+	else {
+		put_process_in_background(cur_process, 0);
+	}
    }
 
    return 1;		
@@ -107,7 +127,7 @@ int cmd_help(tok_t arg[]);
 // Note: FDs will not be closed on failures, because 
 // we are in a child process, when this function fails, the child process
 // would be terminated with all the IO resources released.
-int io_redirection(tok_t arg[]) {
+int io_redirection(process *p, tok_t arg[]) {
      int index = 1; // first argument is the program itself
      int outfd, infd;
      int ret;
@@ -119,12 +139,13 @@ int io_redirection(tok_t arg[]) {
 		    fprintf(stderr, "Failed to open %s\n",arg[index]);
 		    return -1;
 		}
-		close(1);
-		ret = dup2(outfd, 1);
-                if(ret < 0) {
-		    fprintf(stderr, "Failed to invoke dup2 for stdout, return code is %d\n", ret);
-		    return -1;
-	        }
+		// close(1);
+		// ret = dup2(outfd, 1);
+                // if(ret < 0) {
+		//  fprintf(stderr, "Failed to invoke dup2 for stdout, return code is %d\n", ret);
+		//    return -1;
+	        //}
+		p->stdout = outfd;
 		arg[index-1] = arg[index] = NULL;
                 break;
 	    case '<':
@@ -133,12 +154,13 @@ int io_redirection(tok_t arg[]) {
 		    fprintf(stderr, "Failed to open %s\n",arg[index]);
 		    return -1;
 		}
-		close(0);
-		ret = dup2(infd, 0);
-                if(ret < 0) {
-		    fprintf(stderr, "Failed to invoke dup2 for stdin, return code is %d\n", ret);
-		    return -1;
-	        }
+		// close(0);
+		// ret = dup2(infd, 0);
+                // if(ret < 0) {
+		//     fprintf(stderr, "Failed to invoke dup2 for stdin, return code is %d\n", ret);
+		//     return -1;
+	        // }
+		p->stdout = infd;
 		arg[index-1] = arg[index] = NULL;
                 break;
         }
@@ -154,26 +176,43 @@ int path_resolution(const char* filename,
 	            char pathname[], 
 		    int size) {
     
-   int i;
+   int pos;
+   int i, j;
    char * cur_path; 
    
-   if(filename[0] == '/' 
+   if(filename == NULL ||filename[0] == '/' 
 	|| filename[0] == '.') {
 	return 1;	
    }
 
    // get PATH env var
    char * path_env = getenv("PATH");
-   for(cur_path = strtok(path_env, ":"); 
-		cur_path != NULL; cur_path = strtok(NULL, ":")) {
-        // strip ending slash
-        for(i = 0; cur_path[i];i++);
-	for(--i; i >= 0&&cur_path[i] == '/'; i--);
-	cur_path[++i] = '\0';
-	
-	// concatenate string
-	snprintf(pathname, size, "%s/%s", cur_path, filename);
-	// printf("test: %s\n", pathname); 	
+
+   // for(cur_path = strtok(path_env, ":"); 
+   //	cur_path != NULL; cur_path = strtok(NULL, ":")) {
+   
+   for(pos = 0; path_env[pos]; pos++) {
+        for(i = 0; 
+	     i < size && path_env[pos+i] && path_env[pos+i] != ':'; i++) 
+			pathname[i] = path_env[pos+i];
+	if(path_env[pos+i] == '\0')
+		break;
+	else
+		pos += i;
+
+	// strip the ending slash
+	if(pathname[i-1] != '/') pathname[i++] = '/';
+
+	// concatenate path and file 
+	for(j = 0; i < size && filename[j]; i++, j++)
+		 pathname[i] = filename[j];
+
+	if(i < size) 
+		pathname[i] = '\0';
+	else {
+		fprintf(stderr, "size: %d, i: %d\n", size, i);
+		perror("path_resolution failed: pathname over bound");
+	}
 
 	// if file is exectualbe, return OK
 	if(access(pathname, X_OK) == 0) {
@@ -226,9 +265,22 @@ void init_shell()
 
   if(shell_is_interactive){
 
-    /* force into foreground */
+    /* Force into foreground */
     while(tcgetpgrp (shell_terminal) != (shell_pgid = getpgrp()))
       kill( - shell_pgid, SIGTTIN);
+
+    /* Ignore interactive and job-control signals. [150618 thinkhy] */
+    signal(SIGINT, SIG_IGN);   
+    signal(SIGQUIT, SIG_IGN);   
+    signal(SIGTSTP, SIG_IGN);   
+    signal(SIGTTIN, SIG_IGN);   
+    signal(SIGTTOU, SIG_IGN);   
+    
+    // If parent process's SIGCHLD is ignored,   
+    // waitpid will return -1 with errorno set to ECHILD
+    // Refer to: http://linux.die.net/man/2/waitpid
+    // Commented by thinkhy, 6/21/2015 
+    //signal(SIGCHLD, SIG_IGN);   
 
     shell_pgid = getpid();
     /* Put shell in its own process group */
@@ -239,9 +291,14 @@ void init_shell()
 
     /* Take control of the terminal */
     tcsetpgrp(shell_terminal, shell_pgid);
+
+    /* Save default terminal attributes for shell. */
     tcgetattr(shell_terminal, &shell_tmodes);
+
   }
+	
   /** YOUR CODE HERE */
+	
 }
 
 /**
@@ -251,14 +308,26 @@ void add_process(process* p)
 {   
     assert(first_process != NULL);
 
-    if(p == NULL)
-	return;
+    if(p == NULL) return;
     // 150617 added by thinkhy 
     p->next = first_process->next;
     if(first_process->next != NULL)
 	    first_process->next->prev = p;
     p->prev = first_process;
     first_process->next = p;
+}
+
+/**
+ * Remove a process from our process list
+ */
+void remove_process(process* p) {
+    assert(first_process != NULL);
+    assert(first_process != p);
+
+    if(p == NULL) return;
+    p->prev->next = p->next;
+    if (p->next)
+	    p->next->prev = p->prev;
 }
 
 /**
@@ -277,12 +346,9 @@ process* create_process(char* inputString)
  */
 process* find_process_by_pid(pid_t pid) {
   process *p = first_process;
-  printf("process find %d\n", p->pid);
   while(p && p->pid != pid) {
-	printf("process find %d\n", p->pid);
 	p = p->next;
   }
-  printf("process find %d\n", p == NULL? 0 : p->pid);
 
   return p;
 }
@@ -304,12 +370,14 @@ int shell (int argc, char *argv[]) {
   // create the head node and initialize it
   first_process = (process*)malloc(sizeof(process));
   first_process->pid = pid;
-  first_process->status = RUNNING;
+  first_process->status = 0;
+  first_process->background = 0;
+  first_process->tmodes = shell_tmodes;
   first_process->argc = argc;
   first_process->argv = argv;
-  first_process->stdin = stdin;
-  first_process->stdout = stdout;
-  first_process->stderr = stderr;
+  first_process->stdin = STDIN_FILENO;
+  first_process->stdout = STDOUT_FILENO;
+  first_process->stderr = STDERR_FILENO;
   first_process->next = first_process->prev = NULL;
 
   printf("%s running as PID %d under %d\n",argv[0],pid,ppid);
@@ -321,11 +389,12 @@ int shell (int argc, char *argv[]) {
     t = getToks(s); /* break the line into tokens */
     fundex = lookup(t[0]); /* Is first token a shell literal */
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
-    else {
+    else if(t && t[0]) {
        cmd_exec(&t[0]);
       /* fprintf(stdout, "This shell only supports built-ins. Replace this to run programs as commands.\n"); */
     }
 
+    do_job_notification(0);
     getcwd(cwd, MAX_FILE_SIZE);
     fprintf(stdout, "%s - %d: ", cwd, lineNum);
   }

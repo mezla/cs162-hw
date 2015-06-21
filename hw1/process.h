@@ -6,9 +6,10 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define  RUNNING     0
-#define  STOPPED     1
-#define  TERMINATED  2
+#define  RUNNING          0
+#define  STOPPED          1
+#define  TERMINATED       2
+#define  UNKNOWNSTATUS    3
 
 typedef struct process
 {
