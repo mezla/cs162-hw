@@ -28,19 +28,25 @@ void sig_handler(int signum) {
 int mark_process_status(pid_t pid, int status) {
   process *p;
 
+  #ifdef DEBUG
+  printf("invoke mark_process_status for process %d\n", pid);
+  #endif 
+
   if(pid > 0) {
 	for (p = first_process; p; p = p->next) {
 	   fprintf(stderr, "p: %d, target pid: %d\n", p->pid, pid);
            if (p->pid == pid) {
 		p->status = status;
-		if (WIFSTOPPED(status))
+		if (WIFSTOPPED(status)) {
 			p->stopped = 1;
-		else {
+			return 0;
+		}
+		else if (WIFEXITED(status)) {
 			p->completed = 1;			
 			if (WIFSIGNALED(status))
 			    fprintf(stderr, "%d: Terminated by signal %d.\n", (int)pid, WTERMSIG(p->status));
+			return 0;
 		}
-		return 0;
 	   }
 	}
 	fprintf(stderr, "No child process %d.\n", pid);
@@ -63,10 +69,13 @@ void update_status(void) {
    int status;
    pid_t pid;
 
-   do 
+   do {
 	/* specifies that waitpid should return status information about any child process.  */
 	pid = waitpid(WAIT_ANY, &status, WUNTRACED|WNOHANG);
-   while(!mark_process_status(pid, status));
+        #ifdef DEBUG
+	printf("update_status: waitpid return %d\n", pid);
+	#endif
+   } while(!mark_process_status(pid, status));
 }
 
 void wait_for_job(process *p) {
@@ -79,6 +88,27 @@ void wait_for_job(process *p) {
 	mark_process_status(pid, status);
    } while (!p->completed && !p->stopped);
 	  
+}
+
+/* Return true if all the background processes have completed */
+int bgjobs_is_completed() {
+   process *p;
+   
+   for (p = first_process; p; p = p->next) 
+	if (!p->completed && p->background)
+		return 0;
+   return 1;
+}
+
+void wait_for_bgjobs() {
+   int status;
+   pid_t pid;
+
+   /* loop until all the backgroun jobs completed */
+   do {
+	pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+	mark_process_status(pid, status);
+   } while (!bgjobs_is_completed);
 }
 
 void format_job_info(process *p, const char *status) {
@@ -146,7 +176,7 @@ void launch_process(process *p)
 	signal(SIGTSTP, SIG_DFL);
 	signal(SIGTTIN, SIG_DFL);
 	signal(SIGTTOU, SIG_DFL);
-	// signal(SIGCHLD, SIG_DFL);
+	signal(SIGCHLD, SIG_DFL);
 
 	/* Set the standard input/output channels of the new process. */
 	printf("stdin %d\n", p->stdin);
@@ -196,8 +226,6 @@ put_process_in_foreground (process *p, int cont)
   // waitpid(p->pid, NULL, WUNTRACED); 
   wait_for_job(p);
 
-  do_job_notification(p->pid);
-
   /* Put the shell back in the foreground. */
   tcsetpgrp (shell_terminal, shell_pgid);
 
@@ -218,6 +246,30 @@ put_process_in_background (process *p, int cont)
 	if (kill (- p->pid, SIGCONT) < 0)
 		perror("kill (SIGCONT)");
   }
+}
+
+/* 06/22/2015 added thinkhy   
+ * Mark a stopped process as being running again.
+ */
+void mark_process_as_running(process* p) {
+	if (p == NULL) return;
+	p->stopped = 0;
+}
+
+/* 06/22/2015 added thinkhy   
+ * Mark a stopped process as being running again.
+ */
+void continue_process(pid_t pid, int foreground) {
+   process *p;
+
+   for(p = first_process; p&&p->pid != pid; p = p->next);
+
+   mark_process_as_running(p);
+
+   if (foreground)
+	put_process_in_foreground(p, 1);
+   else
+	put_process_in_background(p, 1);
 }
 
 

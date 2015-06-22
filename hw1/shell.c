@@ -7,6 +7,7 @@
 *     4. HW1 - task5 - path resolution
 *     5. HW1 - task6 - process bookkeeping
 *     6. HW1 - task7 - signal handling
+*     6. HW1 - task8 - background job
 *  
 ***********************************************************************************/
 
@@ -35,6 +36,7 @@
 
 process* find_process_by_pid(pid_t pid);
 void add_process(process* p);
+int check_background(char *arg[]);
 
 
 int cmd_quit(tok_t arg[]) {
@@ -52,6 +54,12 @@ int cmd_cd(tok_t arg[]) {
   return 1;
 }
 
+int cmd_wait(tok_t arg[]) {
+   wait_for_bgjobs();
+
+   return 1;
+}
+
 
 int cmd_exec(tok_t arg[]) {
    int wstatus;
@@ -65,12 +73,14 @@ int cmd_exec(tok_t arg[]) {
 
    // create a process bookkeeping
    process* cur_process = (process*)malloc(sizeof(process));
+   assert(cur_process != NULL);
    // cur_process->argc = argc;
    cur_process->argv = arg;
+   cur_process->completed = cur_process->stopped = 0;
    cur_process->stdin = cur_process->stdout = -1;
    cur_process->tmodes = shell_tmodes;
    (cur_process->tmodes).c_lflag |= (IEXTEN | ISIG | ICANON ); 
-   cur_process->background = 1; // foreground process by default
+   cur_process->background = process_background_sign(arg); // foreground process by default
 
    if(path_resolution(arg[0], pathname, MAX_FILE_SIZE) != 0) 
       strncpy(pathname, arg[0], MAX_FILE_SIZE); 
@@ -80,7 +90,6 @@ int cmd_exec(tok_t arg[]) {
       fprintf(stderr, "Failed to process input/output redirection\n");
       exit(-1);
    }
-
 
    add_process(cur_process);
 
@@ -95,6 +104,8 @@ int cmd_exec(tok_t arg[]) {
 		fprintf(stderr, "Failed to exec: %s\n", arg[0]);
                 exit(-2);
 	}
+	perror("Child process unexpected trace");
+	exit(-3);
    }
    else if(pid < 0) {
 	fprintf(stderr, "Failed to exec: %s\n", arg[0]);
@@ -119,6 +130,34 @@ int cmd_exec(tok_t arg[]) {
 
 int cmd_help(tok_t arg[]);
 
+
+// 06/21/2015 added by thinkhy
+// check if background sign & is placed at the end of command line
+int process_background_sign(char *arg[]) { 
+    int i;
+    if(arg == NULL) return 0;
+
+    // find the last field 
+    for (i = 0; arg[i]; i++);
+    i--;
+    if (i < 0) return 0;
+
+    // pattern like'ls &', & is placed in the last field
+    if(arg[i][0] == '&' && arg[i][1] == '\0') {
+	arg[i] = NULL;
+	return 1;
+    }
+    // pattern like'ls&', & is placed at the ending position of last field
+    else {
+	int len = strlen(arg[i]);
+	if (len > 0 && arg[i][len-1] == '&') {
+	   arg[i][len-1] = '\0';
+	   return 1;
+	}
+    } 
+
+    return 0;
+}
 
 // 06/16/2015 added by thinkhy
 // first  arg[IN]:  arguments
@@ -148,6 +187,7 @@ int io_redirection(process *p, tok_t arg[]) {
 		p->stdout = outfd;
 		arg[index-1] = arg[index] = NULL;
                 break;
+
 	    case '<':
 		infd = open(arg[++index], O_RDONLY);
 		if(infd == -1) {
@@ -164,6 +204,7 @@ int io_redirection(process *p, tok_t arg[]) {
 		arg[index-1] = arg[index] = NULL;
                 break;
         }
+
 	index++;
      }
      return 0;
@@ -233,9 +274,10 @@ typedef struct fun_desc {
 } fun_desc_t;
 
 fun_desc_t cmd_table[] = {
-  {cmd_help, "?", "show this help menu"},
-  {cmd_quit, "quit", "quit the command shell"},
-  {cmd_cd,   "cd",   "change current working directory"},
+  { cmd_help, "?",    "show this help menu" },
+  { cmd_quit, "quit", "quit the command shell" },
+  { cmd_cd,   "cd",   "change current working directory" },
+  { cmd_wait, "wait", "wait until all background jobs have terminated before returning to the prompt" },
 };
 
 int cmd_help(tok_t arg[]) {
@@ -309,6 +351,7 @@ void add_process(process* p)
     assert(first_process != NULL);
 
     if(p == NULL) return;
+    printf("add_process: %d\n", p->pid);
     // 150617 added by thinkhy 
     p->next = first_process->next;
     if(first_process->next != NULL)
@@ -325,6 +368,7 @@ void remove_process(process* p) {
     assert(first_process != p);
 
     if(p == NULL) return;
+    printf("remove_process: %d\n", p->pid);
     p->prev->next = p->next;
     if (p->next)
 	    p->next->prev = p->prev;
@@ -369,7 +413,9 @@ int shell (int argc, char *argv[]) {
 
   // create the head node and initialize it
   first_process = (process*)malloc(sizeof(process));
+  assert(first_process != NULL);
   first_process->pid = pid;
+  first_process->completed = first_process->stopped  = 0;
   first_process->status = 0;
   first_process->background = 0;
   first_process->tmodes = shell_tmodes;
@@ -385,7 +431,7 @@ int shell (int argc, char *argv[]) {
   getcwd(cwd, MAX_FILE_SIZE);
   lineNum=0;
   fprintf(stdout, "%s - %d: ", cwd, lineNum);
-  while ((s = freadln(stdin))){
+  while ((s = freadln(stdin))) {
     t = getToks(s); /* break the line into tokens */
     fundex = lookup(t[0]); /* Is first token a shell literal */
     if(fundex >= 0) cmd_table[fundex].fun(&t[1]);
