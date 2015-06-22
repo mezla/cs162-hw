@@ -1,7 +1,8 @@
 /**********************************************************************************
 *
 *  Change List:
-*     1. HW1 - task8 - Foreground/Background processing
+*     1. HW1 - task8 - background job
+*     2. HW1 - task9 - Foreground/background switching
 *  
 ***********************************************************************************/
 
@@ -34,7 +35,7 @@ int mark_process_status(pid_t pid, int status) {
 
   if(pid > 0) {
 	for (p = first_process; p; p = p->next) {
-	   fprintf(stderr, "p: %d, target pid: %d\n", p->pid, pid);
+	   // fprintf(stderr, "p: %d, target pid: %d\n", p->pid, pid);
            if (p->pid == pid) {
 		p->status = status;
 		if (WIFSTOPPED(status)) {
@@ -83,7 +84,7 @@ void wait_for_job(process *p) {
    pid_t pid;
 
    do {
-	printf("wait on process on %d\n", (long)p->pid);
+	// printf("wait on process on %d\n", (long)p->pid);
 	pid = waitpid(WAIT_ANY, &status, WUNTRACED);
 	mark_process_status(pid, status);
    } while (!p->completed && !p->stopped);
@@ -95,8 +96,9 @@ int bgjobs_is_completed() {
    process *p;
    
    for (p = first_process; p; p = p->next) 
-	if (!p->completed && p->background)
+	if ((!p->completed) && p->background) {
 		return 0;
+	}
    return 1;
 }
 
@@ -106,14 +108,15 @@ void wait_for_bgjobs() {
 
    /* loop until all the backgroun jobs completed */
    do {
-	pid = waitpid(WAIT_ANY, &status, WUNTRACED);
+	pid = waitpid(WAIT_ANY, &status, WNOHANG|WUNTRACED);
 	mark_process_status(pid, status);
-   } while (!bgjobs_is_completed);
+   } while (!bgjobs_is_completed());
 }
 
 void format_job_info(process *p, const char *status) {
-  fprintf(stderr, "%ld (%s): %s\n", (long)p->pid, status, 
-		p->argv == NULL ? "" : (p->argv)[0] );
+  fprintf(stderr, "%ld (%s): %s %s\n", (long)p->pid, status, 
+		p->argv == NULL ? "" : (p->argv)[0],
+  		p->background ? "background" : "foreground" );
 }
 
 void do_job_notification(pid_t pid) {
@@ -137,7 +140,7 @@ void do_job_notification(pid_t pid) {
 	       }
 	       /* Don't day anything about jobs that are still running. */
 	       else {
-		  // NOTHING
+		  format_job_info(p, "running");
 	       } 
 	}
    }
@@ -179,13 +182,13 @@ void launch_process(process *p)
 	signal(SIGCHLD, SIG_DFL);
 
 	/* Set the standard input/output channels of the new process. */
-	printf("stdin %d\n", p->stdin);
+	// printf("stdin %d\n", p->stdin);
 	if(p->stdin != STDIN_FILENO) {
 		dup2(p->stdin, STDIN_FILENO);
 		close(p->stdin);
 	}
 
-	printf("stdout %d\n", p->stdout);
+	// printf("stdout %d\n", p->stdout);
 	if(p->stdout != STDOUT_FILENO) {
 		dup2(p->stdout, STDOUT_FILENO);
 		close(p->stdout);
@@ -210,6 +213,9 @@ void
 put_process_in_foreground (process *p, int cont)
 {
   /** YOUR CODE HERE */
+  if (p == NULL) return;
+
+  p->background = 0;
   
   /* Put the job into the foreground. */
   tcsetpgrp(shell_terminal, p->pid);  
@@ -240,6 +246,9 @@ void
 put_process_in_background (process *p, int cont)
 {
   /** YOUR CODE HERE */
+  if (p == NULL) return;
+
+  p->background = 1;
 
   /* Send the job a continue signal, if necessary. */ 
   if (cont) {
@@ -263,6 +272,7 @@ void continue_process(pid_t pid, int foreground) {
    process *p;
 
    for(p = first_process; p&&p->pid != pid; p = p->next);
+   if(p == NULL) return;
 
    mark_process_as_running(p);
 

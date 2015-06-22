@@ -8,6 +8,7 @@
 *     5. HW1 - task6 - process bookkeeping
 *     6. HW1 - task7 - signal handling
 *     6. HW1 - task8 - background job
+*     7. HW1 - task9 - foreground/background switching
 *  
 ***********************************************************************************/
 
@@ -57,6 +58,39 @@ int cmd_cd(tok_t arg[]) {
 int cmd_wait(tok_t arg[]) {
    wait_for_bgjobs();
 
+   return 1;
+}
+
+int process_job(tok_t arg[], int foreground) {
+   process *p;
+   pid_t pid;
+
+   // if pid not specified, then move the most recently
+   // launched process to the foreground
+   if (arg[0] == NULL) {
+	p = first_process->next;	
+        if (p == NULL)
+	    return 0;		
+	else
+	    pid = p->pid;
+   }
+   // else find the process with the specified pid
+   else {
+        pid = atoi(arg[0]);
+   }
+
+   continue_process(pid, foreground);
+
+   return 1;
+}
+
+int cmd_fg(tok_t arg[]) {
+   process_job(arg, 1);
+   return 1;
+}
+
+int cmd_bg(tok_t arg[]) {
+   process_job(arg, 0);
    return 1;
 }
 
@@ -278,6 +312,8 @@ fun_desc_t cmd_table[] = {
   { cmd_quit, "quit", "quit the command shell" },
   { cmd_cd,   "cd",   "change current working directory" },
   { cmd_wait, "wait", "wait until all background jobs have terminated before returning to the prompt" },
+  { cmd_fg,   "fg", "fg [pid]; Move the process with id pid to the foreground. If pid is not specified, then move the most recently launched process to the foreground." },
+  { cmd_bg,   "bg", "bg [pid]; Move the process with id pid to the background. If pid is not specified, then move the most recently launched process to the background." },
 };
 
 int cmd_help(tok_t arg[]) {
