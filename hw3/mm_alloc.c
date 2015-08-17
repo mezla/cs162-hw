@@ -70,25 +70,25 @@ static s_block_ptr extend_heap (size_t size)                 /* @HW3A */
 {    
     /* Current break is address of the new block                      */
     s_block_ptr new_block = (s_block_ptr)sbrk(0);            /* @HW3A */
-    if ((int)sbrk(size + S_BLOCK_SIZE) == -1)                     /* @HW3A */ 
+    if ((int)sbrk(size + S_BLOCK_SIZE) == -1)                /* @HW3A */ 
         return NULL;                                         /* @HW3A */
     new_block->size = size;                                  /* @HW3A */
-    new_block->ptr  = new_block;                             /* @HW3A */
+    new_block->ptr  = new_block->data[0];                    /* @HW3A */
     new_block->free = TRUE;                                  /* @HW3A */
      
     if (base == NULL) /* heap is empty                          @HW3A */
     {
-        new_block->prev = new_block->prev = NULL; /*            @HW3A */
+        new_block->prev = new_block->prev = NULL;  /*           @HW3A */
         base = new_block;                          /*           @HW3A */
     }
     else 
     {
         ASSERT(last->next == NULL);                /*           @HW3A */
-        new_block->prev = last;                  /*             @HW3A */
-        last->next = new_block;                  /*             @HW3A */
+        new_block->prev = last;                    /*           @HW3A */
+        last->next = new_block;                    /*           @HW3A */
     }
      
-    return new_block;                            /*             @HW3A */
+    return new_block;                              /*           @HW3A */
 }
 
 static s_block_ptr split_block(s_block_ptr p, size_t new_size)/*@HW3A */
@@ -102,7 +102,7 @@ static s_block_ptr split_block(s_block_ptr p, size_t new_size)/*@HW3A */
         /* Define a new block on the address p->data+size            */
         new_block = (s_block_ptr)(p->data + new_size);
         new_block->size = p->size - new_size - S_BLOCK_SIZE;
-        new_block->ptr = new_block;
+        new_block->ptr = new_block->data[0];
 
         /* Insert the new block after block p */
         new_block->next = p->next;
@@ -140,7 +140,7 @@ static int is_valid_block_addr (void *p)
    s_block_ptr pb = (s_block_ptr)p;
    if(align4((int)(pb + BLOCK_SIZE + pb->size)) > (int)sbrk(0))  
 	return FALSE;
-   if(pb->ptr != pb)
+   if(pb->ptr != pb->data[0])
 	return FALSE;
 
    return TRUE;
@@ -155,15 +155,65 @@ static s_block_ptr get_block(void *p)
         return NULL;
 }
 
+static void copy_block(s_block_ptr src, s_block_ptr dst)
+{
+  int *sdata, *ddata; 
+  size_t i;
+  sdata = src->ptr;
+  ddata = dst->ptr;
+  for (i = 0; i * 4 < src->size && i * 4 < dst->size; i++)
+    ddata[i] = sdata[i];
+}
 
 void* mm_realloc(void* ptr, size_t size)
 {
 #ifdef MM_USE_STUBS
     return realloc(ptr, size);
 #else
-    /* #error Not implemented. */
-    /* TODO */
-    do {}while(0); 
+    size_t s;
+    void *newp;
+    s_block_ptr pb, new;
+
+    /* exclude some special conditions */
+    if (ptr == NULL)
+        return malloc(size);
+    
+    if ((pb=get_block(ptr)) != NULL)
+    {
+        s = align4(size);
+        if (pb->size >= s)
+         {
+           /* If space is enough, try to split current block */
+           if (pb->size - s >= (BLOCK_SIZE + 4))
+             split_block(pb, s);
+         }
+    }
+    else 
+    {
+        /* Try fusion with next if possible */
+        if (pb->next && pb->next->free
+            && (pb->size + BLOCK_SIZE + pb->next->size) >= s)
+        {
+           fusion_block(pb);
+           if (pb->size - s >= BLOCK_SIZE + 4)
+             split_block(pb, s);
+        }
+        else
+        {
+           /* no way to get enough space on current node, have to malloc new memory */
+           newp = malloc(s);
+           if (newp == NULL)
+               return NULL;
+           new = get_block(newp);
+           copy_block(pb, new);
+           free(pb);
+           return (newp);  
+        }
+
+        return (pb);
+    }
+    
+    return (NULL);
 #endif
 }
 
@@ -193,7 +243,7 @@ void mm_free(void* ptr)
           /* Else release the end of heap                      */
           else
               pb->prev->next = NULL;     
-          sbrk(pb);
+          brk(pb);
        }
     }
     

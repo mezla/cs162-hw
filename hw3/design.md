@@ -56,8 +56,19 @@
          - Else
          -   Silently do nothing??
 
-   * **mm_realloc**
-      - The new region is suitably aligned for requested size
+   * **mm_realloc(void *pb, int size)**
+
+      - Correctness Constraints
+         - The new region is suitably aligned for requested size
+         - workable and efficient
+      - Implementation
+         - If the size doesn't change, or the extra-available size(do to alignment constraint, or if the remainning size was too small to split) is sufficient
+         -   Do nothing
+         - If shrink the block
+         -   Try a split
+         - If the next block is free and provide enough space
+         -   Fusion and try to split if necessary
+
 
    * Internal functions
           
@@ -99,6 +110,10 @@
          - Verify p is a free block
          - If p's next block exists and p's block is also free, then
          -   Merge p and p's next block
+
+      - **void copy_block(s_block_ptr src, s_block_ptr dst)** : Copy data from block to block
+         - convert src and dst to int*
+         - copy data from dst to src int by int
          
    * Others
       - MACRO: #define align4(x) (((((x) -1) > >2) < <2)+4)
