@@ -21,7 +21,7 @@
          - The returned pointer should be NULL in case of failure.
 
       - Implementation
-         - Align size to the requested size
+         - Align the requested size
          - If no block is allocated yet(base is not initialized
          -    Allocate block with aligned size by invoking *sbrk*
          -    Update base pointer
