@@ -25,5 +25,6 @@ int main (int argc, char *argv[]) {
     printf("Heap: malloc 1: %lx\n", (long unsigned int) buf1);
     printf("Heap: malloc 2: %lx\n", (long unsigned int) buf2);
     recur(3);
+
     return 0;
 }

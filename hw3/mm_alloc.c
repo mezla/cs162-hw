@@ -23,11 +23,11 @@
 #define align4(x)  (((((x)-1)>>2)<<2)+4)
 
 
-/* Global variables                                                   */
-s_block_ptr base;     /* beginning point of heap                @HW3A */
-s_block_ptr last;     /* last visited block                     @HW3A */
+/* Global variables                                                      */
+s_block_ptr base = NULL; /* beginning point of heap                @HW3A */
+s_block_ptr last;        /* last visited block                     @HW3A */
 
-/* Internal functions                                           @HW3A */
+/* Internal functions                                              @HW3A */
 
 /* Split block according to size, b must exist */
 /* void split_block (s_block_ptr b, size_t s); */
@@ -118,10 +118,10 @@ static s_block_ptr fusion_block(s_block_ptr pb)
      * then merge p and p's next block.                    */
     if (pb->next && pb->next->free) 
     {
-      pb->next = pb->next->next; 		
+      pb->size = pb->size + BLOCK_SIZE + pb->next->size;
       if (pb->next->next)
         pb->next->next->prev = pb;
-      pb->size = pb->size + BLOCK_SIZE + pb->next->size;
+      pb->next = pb->next->next; 		
     }
 
     return (pb);
@@ -166,14 +166,13 @@ void* mm_malloc(size_t size)
 #else
     /* Align the requested size */
     size_t s = align4(size);    
-    void *p;
     s_block_ptr pb;
 
     /* no block is allocated yet */
     if (base == NULL) 
     {
        pb = extend_heap(s);
-       if (p == NULL)
+       if (pb == NULL)
           return NULL;
        base = pb;
     }
